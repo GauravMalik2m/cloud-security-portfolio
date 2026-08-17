@@ -92,3 +92,65 @@ temporarily rather than held permanently.
 **Verification.** IAM credential report confirms MFA is active and no access keys are 
 present for the user. The IAM console confirms attached policies and last
 activity.
+
+### 3.3 Cost Guardrails
+
+Cost controls are not conventionally treated as security controls, but they
+serve two purposes in a baseline. The first is operational: unexpected charges
+indicate resources running that were not intended to be running, which is a
+configuration signal as much as a financial one. The second is detective.
+Compromised AWS credentials are commonly used for cryptocurrency mining, and
+the resulting compute spend is frequently the earliest visible indicator of
+compromise — often surfacing before any dedicated detection control fires.
+
+A zero-spend budget was configured to alert on any charge beyond free tier
+usage, alongside a monthly cost budget with alerts at defined thresholds of
+both actual and forecast spend. The forecast alert is the more useful of the
+two, as it warns before the spend is incurred rather than after.
+
+Budget alerts reduce time to detection; they do not prevent spend. Preventing
+resource creation requires separate controls, such as Service Control Policies
+restricting instance types or regions, which are unavailable in a single
+account.
+
+**Verification.** Billing console confirms budgets present with configured
+thresholds and active email subscribers.
+
+### 3.4 Audit Logging
+
+CloudTrail records API activity across the account. Event history, enabled by
+default, retains 90 days of management events and is queryable in the console
+but cannot be configured or retained beyond that window. A trail delivers
+events durably to S3 with retention governed by the bucket's lifecycle policy,
+and is what an environment requires to claim CloudTrail is enabled.
+
+A multi-region trail was configured, capturing management events for both read
+and write operations. Multi-region coverage is material: most AWS services are
+regionally scoped, and activity in an unmonitored region is a recognised gap.
+Data events were deliberately excluded on cost grounds and are noted as a
+limitation.
+
+Logs are encrypted using SSE-KMS with a customer-managed key. This provides two
+properties that SSE-S3 does not. First, decryption requires both S3 object
+permission and permission under the KMS key policy — two independent
+authorisation gates rather than one. Second, every use of the key is recorded
+in CloudTrail, producing an auditable record of who decrypted what and when.
+Customer-managed keys additionally allow the key policy and rotation schedule
+to be controlled directly, and permit the key to be disabled, rendering the
+data unreadable without modifying any object.
+
+Log file validation is enabled. CloudTrail produces hourly digest files
+hash-chained to their predecessors, allowing modification or deletion of log
+files to be detected. This is a detective control on log integrity: it does not
+prevent tampering, but ensures tampering cannot occur unnoticed. Without it,
+the audit record is a set of files that any principal with write access to the
+bucket could alter — which materially weakens its evidential value.
+
+**Limitation.** CloudTrail collects; it does not analyse. Interrogating the
+S3 bucket directly is impractical, and no query layer (Athena, CloudWatch Logs,
+CloudTrail Lake, or an external SIEM) is currently configured. Log collection
+without an accessible query path provides limited investigative capability.
+
+**Verification.** Trail configuration shows multi-region enabled, a
+customer-managed KMS key ID, and log file validation enabled. Digest files are
+present in the S3 bucket.
